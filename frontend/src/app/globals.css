@@ -1,0 +1,43 @@
+@import "tailwindcss";
+
+:root {
+  --background: #ffffff;
+  --foreground: #171717;
+}
+
+@theme inline {
+  --color-background: var(--background);
+  --color-foreground: var(--foreground);
+  --font-sans: var(--font-geist-sans);
+  --font-mono: var(--font-geist-mono);
+}
+
+@media (prefers-color-scheme: dark) {
+  :root {
+    --background: #0a0a0a;
+    --foreground: #ededed;
+  }
+}
+
+body {
+  font-family: 'Roboto', sans-serif;
+  color: #333333;
+  background-color: #f8f9fa;
+}
+/* Custom color classes for Tailwind */
+.bg-primary { background-color: #337ab7; }
+.text-primary { color: #337ab7; }
+.border-primary { border-color: #337ab7; }
+.bg-accent { background-color: #e4a529; }
+.text-accent { color: #e4a529; }
+.border-accent { border-color: #e4a529; }
+/* 508 Compliance: Clear focus indicator for keyboard navigation */
+:focus-visible {
+    outline: 3px solid #e4a529;
+    outline-offset: 2px;
+    border-radius: 4px;
+}
+.nav-active {
+    background-color: rgba(255, 255, 255, 0.2);
+    border-bottom: 3px solid #e4a529;
+}

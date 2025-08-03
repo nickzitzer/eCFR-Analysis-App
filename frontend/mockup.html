@@ -1,0 +1,336 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>eCFR Analysis Tool</title>
+    <!-- Tailwind CSS for styling -->
+    <script src="https://cdn.tailwindcss.com"></script>
+    <!-- React and Babel for JSX compilation -->
+    <script src="https://unpkg.com/react@18/umd/react.development.js"></script>
+    <script src="https://unpkg.com/react-dom@18/umd/react-dom.development.js"></script>
+    <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
+    <!-- Google Fonts: Roboto -->
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Roboto:wght@400;500;700&display=swap" rel="stylesheet">
+    <style>
+        /* Applying custom font and colors as per the request */
+        body {
+            font-family: 'Roboto', sans-serif;
+            color: #333333;
+            background-color: #f8f9fa;
+        }
+        /* Custom color classes for Tailwind */
+        .bg-primary { background-color: #337ab7; }
+        .text-primary { color: #337ab7; }
+        .border-primary { border-color: #337ab7; }
+        .bg-accent { background-color: #e4a529; }
+        .text-accent { color: #e4a529; }
+        .border-accent { border-color: #e4a529; }
+        /* 508 Compliance: Clear focus indicator for keyboard navigation */
+        :focus-visible {
+            outline: 3px solid #e4a529;
+            outline-offset: 2px;
+            border-radius: 4px;
+        }
+        .nav-active {
+            background-color: rgba(255, 255, 255, 0.2);
+            border-bottom: 3px solid #e4a529;
+        }
+    </style>
+</head>
+<body>
+    <div id="root"></div>
+
+    <script type="text/babel">
+        const { useState, useEffect, useRef } = React;
+
+        // --- Mock Data ---
+        const mockRegulations = [
+            { id: 1, title: '40 CFR Part 60', description: 'Standards of Performance for New Stationary Sources', agency: 'EPA' },
+            { id: 2, title: '29 CFR Part 1910', description: 'Occupational Safety and Health Standards', agency: 'OSHA' },
+            { id: 3, title: '21 CFR Part 11', description: 'Electronic Records; Electronic Signatures', agency: 'FDA' },
+            { id: 4, title: '45 CFR Part 164', description: 'HIPAA Security and Privacy', agency: 'HHS' },
+        ];
+
+        const mockRegulationDetail = {
+            id: 2,
+            title: '29 CFR Part 1910 - Occupational Safety and Health Standards',
+            agency: 'Occupational Safety and Health Administration (OSHA)',
+            text: "This part contains the occupational safety and health standards for all industries...",
+            analysis: {
+                word_count: 85000,
+                complexity_score: 65.2,
+                amendment_frequency: 12,
+                keywords: [{ word: 'Safety', count: 230 }, { word: 'Standard', count: 180 }, { word: 'Employer', count: 155 }],
+            }
+        };
+        
+        const mockDashboardAnalytics = {
+            key_stats: { total_regs: 185432, avg_complexity: 55.8, avg_amendments: 4.1 },
+            regs_by_agency: [{ agency: 'EPA', count: 12500 }, { agency: 'HHS', count: 9800 }, { agency: 'OSHA', count: 7600 }, { agency: 'FDA', count: 6500 }, { agency: 'DOT', count: 11000 }],
+            complexity_over_time: [{ year: 2018, score: 54.2 }, { year: 2019, score: 54.9 }, { year: 2020, score: 55.1 }, { year: 2021, score: 55.8 }, { year: 2022, score: 56.3 }],
+            trending_topics: ['Cybersecurity', 'Supply Chain', 'Environmental Impact', 'Data Privacy', 'AI Governance']
+        };
+
+        // --- SVG Icons ---
+        const SearchIcon = () => <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5" viewBox="0 0 20 20" fill="currentColor" aria-hidden="true"><path fillRule="evenodd" d="M8 4a4 4 0 100 8 4 4 0 000-8zM2 8a6 6 0 1110.89 3.476l4.817 4.817a1 1 0 01-1.414 1.414l-4.816-4.816A6 6 0 012 8z" clipRule="evenodd" /></svg>;
+        const ChartBarIcon = () => <svg xmlns="http://www.w3.org/2000/svg" className="h-6 w-6 mr-2" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2} aria-hidden="true"><path strokeLinecap="round" strokeLinejoin="round" d="M9 19v-6a2 2 0 00-2-2H5a2 2 0 00-2 2v6a2 2 0 002 2h2a2 2 0 002-2zm0 0V9a2 2 0 012-2h2a2 2 0 012 2v10m-6 0a2 2 0 002 2h2a2 2 0 002-2m0 0V5a2 2 0 012-2h2a2 2 0 012 2v14a2 2 0 01-2 2h-2a2 2 0 01-2-2z" /></svg>;
+        const SparklesIcon = () => <svg xmlns="http://www.w3.org/2000/svg" className="h-6 w-6 mr-2" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2} aria-hidden="true"><path strokeLinecap="round" strokeLinejoin="round" d="M5 3v4M3 5h4M6.226 6.226l1.414 1.414M17.774 6.226l-1.414 1.414M12 2v4M12 20v2M3 19h4M17 19h4M6.226 17.774l1.414-1.414M17.774 17.774l-1.414-1.414M12 6a6 6 0 100 12 6 6 0 000-12z" /></svg>;
+        const CloseIcon = () => <svg xmlns="http://www.w3.org/2000/svg" className="h-6 w-6" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}><path strokeLinecap="round" strokeLinejoin="round" d="M6 18L18 6M6 6l12 12" /></svg>;
+        const ChatIcon = () => <svg xmlns="http://www.w3.org/2000/svg" className="h-8 w-8" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}><path strokeLinecap="round" strokeLinejoin="round" d="M8 12h.01M12 12h.01M16 12h.01M21 12c0 4.418-4.03 8-9 8a9.863 9.863 0 01-4.255-.949L3 20l1.395-3.72C3.512 15.042 3 13.574 3 12c0-4.418 4.03-8 9-8s9 3.582 9 8z" /></svg>;
+
+        // --- Components ---
+
+        function FloatingChatbot({ context }) {
+            const [isOpen, setIsOpen] = useState(false);
+            const [messages, setMessages] = useState([]);
+            const [input, setInput] = useState('');
+            const chatBoxRef = useRef(null);
+
+            useEffect(() => {
+                const initialMessage = context 
+                    ? `Hello! I can help you with "${context}". Ask me to summarize or explain something.`
+                    : `Hello! I am the eCFR AI assistant. How can I help you today?`;
+                setMessages([{ from: 'ai', text: initialMessage }]);
+            }, [context]);
+
+            useEffect(() => {
+                if (chatBoxRef.current) {
+                    chatBoxRef.current.scrollTop = chatBoxRef.current.scrollHeight;
+                }
+            }, [messages]);
+
+            const handleSend = (e) => {
+                e.preventDefault();
+                if (!input.trim()) return;
+                const newMessages = [...messages, { from: 'user', text: input }];
+                setMessages(newMessages);
+                setInput('');
+                setTimeout(() => {
+                    setMessages(prev => [...prev, { from: 'ai', text: `Thinking about "${input}"... (Mock AI response)` }]);
+                }, 1500);
+            };
+
+            if (!isOpen) {
+                return (
+                    <button onClick={() => setIsOpen(true)} className="fixed bottom-6 right-6 bg-primary text-white p-4 rounded-full shadow-lg hover:bg-opacity-90 transition-transform hover:scale-110" aria-label="Open AI Assistant">
+                        <ChatIcon />
+                    </button>
+                );
+            }
+
+            return (
+                <div className="fixed bottom-6 right-6 w-96 h-[32rem] bg-white rounded-lg shadow-2xl flex flex-col border border-gray-300" role="dialog" aria-labelledby="ai-assistant-heading">
+                    <header className="flex justify-between items-center p-3 bg-primary text-white rounded-t-lg">
+                        <h3 id="ai-assistant-heading" className="font-bold flex items-center"><SparklesIcon /> AI Assistant</h3>
+                        <button onClick={() => setIsOpen(false)} aria-label="Close AI Assistant"><CloseIcon /></button>
+                    </header>
+                    <div ref={chatBoxRef} className="flex-grow p-4 overflow-y-auto" aria-live="polite">
+                        {messages.map((msg, index) => (
+                            <div key={index} className={`flex mb-3 ${msg.from === 'user' ? 'justify-end' : 'justify-start'}`}>
+                                <div className={`rounded-lg px-3 py-2 max-w-xs ${msg.from === 'user' ? 'bg-primary text-white' : 'bg-gray-200'}`}>{msg.text}</div>
+                            </div>
+                        ))}
+                    </div>
+                    <form onSubmit={handleSend} className="p-3 border-t">
+                        <div className="flex">
+                            <input type="text" value={input} onChange={(e) => setInput(e.target.value)} className="flex-grow p-2 border border-gray-300 rounded-l-md focus:ring-2 focus:ring-accent" placeholder="Ask a question..." />
+                            <button type="submit" className="bg-primary text-white px-4 rounded-r-md font-semibold">Send</button>
+                        </div>
+                    </form>
+                </div>
+            );
+        }
+
+        function AnalyticsDashboard() {
+            const { key_stats, regs_by_agency, complexity_over_time, trending_topics } = mockDashboardAnalytics;
+            const maxAgencyCount = Math.max(...regs_by_agency.map(a => a.count));
+
+            return (
+                <main id="main-content" className="p-4 sm:p-6 md:p-8">
+                    <header className="mb-8">
+                        <h2 className="text-3xl font-bold">Overall Analytics Dashboard</h2>
+                        <p className="text-lg text-gray-600">A high-level view of the federal regulatory environment.</p>
+                    </header>
+                    
+                    <section className="mb-8">
+                        <label htmlFor="agency-filter-dash" className="block text-sm font-medium text-gray-700 mb-1">Filter Dashboard by Agency</label>
+                        <select id="agency-filter-dash" className="w-full md:w-1/3 p-2 border border-gray-300 rounded-md focus:ring-2 focus:ring-accent">
+                            <option>All Agencies</option>
+                            <option>EPA</option>
+                            <option>OSHA</option>
+                            <option>FDA</option>
+                            <option>HHS</option>
+                            <option>DOT</option>
+                        </select>
+                    </section>
+                    
+                    {/* Key Stats */}
+                    <section className="grid grid-cols-1 md:grid-cols-3 gap-6 mb-8" aria-label="Key Statistics">
+                        <div className="bg-white p-6 rounded-lg shadow-md border text-center"><h3 className="text-lg font-semibold text-gray-500">Total Regulations</h3><p className="text-4xl font-bold text-primary">{key_stats.total_regs.toLocaleString()}</p></div>
+                        <div className="bg-white p-6 rounded-lg shadow-md border text-center"><h3 className="text-lg font-semibold text-gray-500">Avg. Complexity Score</h3><p className="text-4xl font-bold text-primary">{key_stats.avg_complexity}</p></div>
+                        <div className="bg-white p-6 rounded-lg shadow-md border text-center"><h3 className="text-lg font-semibold text-gray-500">Avg. Amendments/Year</h3><p className="text-4xl font-bold text-primary">{key_stats.avg_amendments}</p></div>
+                    </section>
+
+                    {/* Charts */}
+                    <section className="grid grid-cols-1 lg:grid-cols-2 gap-8 mb-8">
+                        <div className="bg-white p-6 rounded-lg shadow-md border" aria-labelledby="regs-by-agency-heading">
+                            <h3 id="regs-by-agency-heading" className="text-xl font-bold mb-4">Regulations by Agency</h3>
+                            <div className="space-y-3">
+                                {regs_by_agency.map(item => (
+                                    <div key={item.agency} className="flex items-center">
+                                        <span className="w-16 text-sm font-bold">{item.agency}</span>
+                                        <div className="w-full bg-gray-200 rounded-full h-6"><div className="bg-primary h-6 rounded-full flex items-center justify-end pr-2 text-white text-xs" style={{ width: `${(item.count / maxAgencyCount) * 100}%` }}>{item.count.toLocaleString()}</div></div>
+                                    </div>
+                                ))}
+                            </div>
+                        </div>
+                        <div className="bg-white p-6 rounded-lg shadow-md border" aria-labelledby="complexity-over-time-heading">
+                            <h3 id="complexity-over-time-heading" className="text-xl font-bold mb-4">Complexity Over Time</h3>
+                            <div className="h-64 bg-gray-50 rounded-lg border flex items-center justify-center text-gray-400">[Line Chart Visualization Area]</div>
+                        </div>
+                    </section>
+
+                    {/* Trending Topics */}
+                    <section className="bg-white p-6 rounded-lg shadow-md border" aria-labelledby="trending-topics-heading">
+                        <h3 id="trending-topics-heading" className="text-xl font-bold mb-4">Trending Topics</h3>
+                        <div className="flex flex-wrap gap-3">
+                            {trending_topics.map(topic => <span key={topic} className="bg-accent text-white text-sm font-semibold px-3 py-1 rounded-full">{topic}</span>)}
+                        </div>
+                    </section>
+                </main>
+            );
+        }
+
+        function RegulationDetail({ regulation, onBack }) {
+            return (
+                <main id="main-content" className="p-4 sm:p-6 md:p-8">
+                    <button onClick={onBack} className="text-primary font-semibold mb-6">&larr; Back to Search Results</button>
+                    <header className="mb-6">
+                        <h2 className="text-3xl font-bold">{regulation.title}</h2>
+                        <p className="text-lg text-gray-600">{regulation.agency}</p>
+                    </header>
+                    <div className="grid grid-cols-1 lg:grid-cols-3 gap-8">
+                        <article className="lg:col-span-2 bg-white p-6 rounded-lg shadow-md border">
+                            <h3 className="text-xl font-bold mb-4">Regulation Text</h3>
+                            <p className="leading-relaxed whitespace-pre-wrap">{regulation.text}</p>
+                        </article>
+                        <aside className="space-y-8">
+                             <section className="bg-white p-6 rounded-lg shadow-md border" aria-labelledby="analysis-heading">
+                                <h3 id="analysis-heading" className="text-xl font-bold mb-4 flex items-center text-primary"><ChartBarIcon /> Analysis</h3>
+                                <div className="space-y-4">
+                                    <div className="flex justify-between"><span>Complexity Score:</span> <span className="font-bold">{regulation.analysis.complexity_score}</span></div>
+                                    <div className="flex justify-between"><span>Word Count:</span> <span className="font-bold">{regulation.analysis.word_count.toLocaleString()}</span></div>
+                                    <div className="flex justify-between"><span>Amendments:</span> <span className="font-bold">{regulation.analysis.amendment_frequency}</span></div>
+                                </div>
+                             </section>
+                        </aside>
+                    </div>
+                </main>
+            );
+        }
+
+        function ExplorerDashboard({ onSelectRegulation }) {
+            return (
+                <main id="main-content" className="p-4 sm:p-6 md:p-8">
+                    <header className="text-center mb-8">
+                        <h2 className="text-3xl font-bold">eCFR Regulation Explorer</h2>
+                        <p className="text-lg text-gray-600 mt-1">Search, analyze, and understand federal regulations.</p>
+                    </header>
+                    <section className="bg-white p-6 rounded-lg shadow-md border mb-8" aria-labelledby="search-filter-heading">
+                        <h3 id="search-filter-heading" className="sr-only">Search and Filter Regulations</h3>
+                        <form role="search">
+                            <div className="grid grid-cols-1 md:grid-cols-3 gap-4 items-end">
+                                <div className="md:col-span-2">
+                                    <label htmlFor="search-query" className="block text-sm font-medium text-gray-700 mb-1">Search Regulations</label>
+                                    <div className="relative"><div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none"><SearchIcon /></div><input type="search" id="search-query" className="w-full p-2 pl-10 border border-gray-300 rounded-md focus:ring-2 focus:ring-accent" placeholder="e.g., 'workplace safety'" /></div>
+                                </div>
+                                <div>
+                                    <label htmlFor="agency-filter" className="block text-sm font-medium text-gray-700 mb-1">Filter by Agency</label>
+                                    <select id="agency-filter" className="w-full p-2 border border-gray-300 rounded-md focus:ring-2 focus:ring-accent"><option>All Agencies</option><option>EPA</option><option>OSHA</option><option>FDA</option><option>HHS</option></select>
+                                </div>
+                            </div>
+                        </form>
+                    </section>
+                    <section aria-labelledby="results-heading">
+                        <h2 id="results-heading" className="sr-only">Search Results</h2>
+                        <div className="space-y-4">
+                            {mockRegulations.map(reg => (
+                                <article key={reg.id} className="bg-white p-4 rounded-lg shadow-sm border hover:shadow-md transition-shadow">
+                                    <div className="flex justify-between items-start">
+                                        <div><h3 className="text-lg font-bold text-primary">{reg.title}</h3><p className="text-sm text-gray-600">{reg.description}</p></div>
+                                        <button onClick={() => onSelectRegulation(reg)} className="ml-4 flex-shrink-0 bg-primary text-white px-4 py-2 rounded-md font-semibold text-sm">View Details</button>
+                                    </div>
+                                    <p className="mt-2 text-xs font-semibold text-gray-500 bg-gray-100 inline-block px-2 py-1 rounded-full">{reg.agency}</p>
+                                </article>
+                            ))}
+                        </div>
+                    </section>
+                </main>
+            );
+        }
+
+        function App() {
+            const [view, setView] = useState('explorer'); // 'explorer', 'dashboard', 'detail'
+            const [selectedRegulation, setSelectedRegulation] = useState(null);
+
+            const handleSelectRegulation = (regulation) => {
+                setSelectedRegulation(mockRegulationDetail);
+                setView('detail');
+            };
+
+            const handleBackToExplorer = () => {
+                setSelectedRegulation(null);
+                setView('explorer');
+            };
+            
+            const renderView = () => {
+                switch (view) {
+                    case 'explorer':
+                        return <ExplorerDashboard onSelectRegulation={handleSelectRegulation} />;
+                    case 'dashboard':
+                        return <AnalyticsDashboard />;
+                    case 'detail':
+                        return <RegulationDetail regulation={selectedRegulation} onBack={handleBackToExplorer} />;
+                    default:
+                        return <ExplorerDashboard onSelectRegulation={handleSelectRegulation} />;
+                }
+            };
+            
+            const getChatContext = () => {
+                if (view === 'detail' && selectedRegulation) {
+                    return selectedRegulation.title;
+                }
+                return null;
+            };
+
+            return (
+                <div className="min-h-screen bg-gray-50">
+                    <header role="banner" className="bg-primary text-white p-4 shadow-md flex justify-between items-center">
+                        <h1 className="text-2xl font-bold">Federal Regulation Analysis Tool</h1>
+                        <nav className="flex items-center space-x-2">
+                            <button onClick={() => setView('explorer')} className={`px-4 py-2 rounded-md font-semibold transition-colors ${view === 'explorer' || view === 'detail' ? 'nav-active' : ''}`}>Explorer</button>
+                            <button onClick={() => setView('dashboard')} className={`px-4 py-2 rounded-md font-semibold transition-colors ${view === 'dashboard' ? 'nav-active' : ''}`}>Dashboard</button>
+                        </nav>
+                        <a href="#main-content" className="sr-only focus:not-sr-only focus:absolute focus:top-4 focus:right-4 bg-accent text-primary font-bold p-2 rounded-md">Skip to Main Content</a>
+                    </header>
+                    
+                    {renderView()}
+
+                    <FloatingChatbot context={getChatContext()} />
+
+                    <footer className="text-center p-4 mt-8 text-gray-500 text-sm border-t">
+                        <p>U.S. Federal Government | This is a demonstration application.</p>
+                    </footer>
+                </div>
+            );
+        }
+
+        const container = document.getElementById('root');
+        const root = ReactDOM.createRoot(container);
+        root.render(<App />);
+    </script>
+</body>
+</html>
