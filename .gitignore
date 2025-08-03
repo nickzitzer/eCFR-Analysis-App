@@ -85,3 +85,6 @@ frontend/out/
 
 # Docker
 docker-compose.override.yml
+
+# Local title downloads
+docs/title-*.xml

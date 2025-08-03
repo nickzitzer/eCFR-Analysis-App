@@ -1,129 +1,109 @@
-# 1. Project Overview
+# Technical Design: eCFR Analysis App
 
-The goal is to build a full-stack application that downloads, stores, analyzes, and displays data from the United States eCFR (Electronic Code of Federal Regulations). The application will feature a robust search engine, advanced data visualizations, and an AI-powered assistant to help users understand complex regulations. It will consist of a Node.js backend, a Next.js frontend, and be containerized with Docker.
+## 1. Project Overview
 
-# 2. System Architecture
+The eCFR Analysis App is a full-stack application designed to download, store, analyze, and display data from the United States eCFR (Electronic Code of Federal Regulations). The application provides a user-friendly interface for exploring regulations, viewing detailed statistics, and gaining insights through data visualizations and an AI-powered assistant.
 
-We'll use a microservices-oriented architecture to accommodate the new features:
+## 2. System Architecture
 
-- **Frontend (Client):** A Next.js application that provides the user interface.
-- **Backend (Server):** A Node.js/Express application serving as the primary API gateway. It will handle business logic, user requests, and communication with other services.
-- **Database:** A MongoDB database for storing the core regulation data.
-- **Search Engine:** An Elasticsearch service for providing advanced, full-text search capabilities.
-- **AI Service:** The backend will integrate with a third-party LLM (like the Gemini API) to provide summarization and explanation features.
+The application follows a microservices-oriented architecture, containerized with Docker for consistency and ease of deployment.
 
-# 3. Backend Design (Node.js & Express)
+*   **Frontend (Client):** A **Next.js** application that provides a dynamic and responsive user interface.
+*   **Backend (Server):** A **Node.js/Express** application that serves as the API, handling business logic, data processing, and communication with the database and search engine.
+*   **Database:** A **PostgreSQL** database for storing the core regulation data, including titles, chapters, parts, and sections.
+*   **Search Engine:** The application leverages **PostgreSQL's** built-in full-text search capabilities.
+*   **AI Integration:** The backend integrates with a third-party Large Language Model (LLM) to provide AI-powered features like summarization and a question-answering assistant.
 
-The backend will orchestrate data flow between the different parts of the system.
+## 3. Backend Design (Node.js & Express)
 
-## 3.1. Data Fetching and Indexing
+The backend is responsible for fetching data, managing the database and search index, and exposing a RESTful API for the frontend.
 
-- **Initial Data Download:** The script (`/scripts/fetch-ecfr-data.js`) will now have a two-step process:
-  1. Fetch data from the eCFR API and store it in MongoDB.
-  2. After storing, push the text data into Elasticsearch for indexing.
+### 3.1. Data Fetching and Storage
 
-- **Data Updates:** The recurring `node-cron` job will update both MongoDB and Elasticsearch to keep them in sync.
+The data pipeline is a multi-step process that involves fetching data from the eCFR, processing it, and storing it in the database.
 
-## 3.2. MongoDB Database Schema
+*   **Data Fetching:** The primary method for fetching data is a two-step process:
+    1.  The `backend/scripts/download-titles.sh` script downloads all 50 eCFR titles as XML files.
+    2.  The `backend/scripts/process-local-data.js` script then parses these local XML files.
+*   **Metadata Fetching:** The `backend/scripts/fetch-ecfr-data-v2.js` script is used to fetch metadata such as titles, chapters, and agencies directly from the eCFR API. This script is not used for fetching the full regulation content due to API limitations.
+*   **Database Storage:** The processed data, including the full text of regulations and their hierarchical structure, is stored in the PostgreSQL database.
+*   **Search Indexing:** The text content of the regulations is indexed in PostgreSQL using a `tsvector` column to enable fast and powerful full-text search.
 
-The schemas for regulations and analysis remain largely the same, but the `analysis` collection will be expanded.
+### 3.2. PostgreSQL Database Schema
 
-- **`regulations` collection:** (No changes)
+The database schema is designed to store the regulations in a structured and hierarchical manner:
 
-- **`analysis` collection (Expanded):**
-```json
-{
-  "_id": "<ObjectId>",
-  "regulation_id": "<ObjectId of the regulation>",
-  "word_count": 1250,
-  "checksum": "<MD5 or SHA256 hash of the text>",
-  "complexity_score": 45.5,
-  "amendment_frequency": 5,
-  "named_entities": {
-    "agencies": ["EPA", "Department of Justice"],
-    "locations": ["Washington D.C."]
-  },
-  "custom_metrics": {
-    "keyword_frequency": { ... }
-  }
-}
-```
+*   `titles`: Stores the main titles of the regulations (e.g., `title_number`, `name`).
+*   `chapters`: Linked to `titles`, storing the chapters within each title.
+*   `parts`: Linked to `chapters`, storing the parts within each chapter.
+*   `sections`: Linked to `parts`, storing individual sections. Includes `ecfr_id` and `type` (e.g., 'SECTION', 'SUBPART').
+*   `section_versions`: Contains the actual content of each section for a specific `effective_date`. It also stores statistics like `word_count` and `complexity_score`.
+*   `agencies`: Stores information about the federal agencies.
+*   `agency_cfr_references`: A join table linking `agencies` to the `chapters` they are associated with.
 
-## 3.3. API Endpoints (Express)
+### 3.3. API Endpoints (Express)
 
-The API endpoints will be updated to include search and AI features:
+The backend provides a comprehensive set of RESTful API endpoints:
 
-* `GET /api/regulations`: Get a paginated list of regulations (from MongoDB).
-* `GET /api/regulations/:id`: Get details of a specific regulation (from MongoDB).
-* `GET /api/analysis/:regulation_id`: Get analysis for a regulation (from MongoDB).
-* `GET /api/search`: Queries Elasticsearch. Supports parameters like `q`, `page`, and filters.
-* `POST /api/ai/summarize`: Sends regulation text to the Gemini API for summarization.
-* `POST /api/ai/explain`: Takes a user question and regulation text to get an explanation from Gemini.
+*   **Health Check:**
+    *   `GET /health`: Checks the health of the backend and its database connection.
+*   **Agencies:**
+    *   `GET /api/agencies`: Retrieves a list of all agencies.
+    *   `GET /api/agencies/:id`: Retrieves details for a specific agency.
+    *   `GET /api/agencies/:id/regulations`: Retrieves the regulations associated with a specific agency.
+*   **Titles:**
+    *   `GET /api/titles`: Retrieves a list of all titles.
+    *   `GET /api/titles/:id`: Retrieves details for a specific title.
+    *   `GET /api/titles/:id/details`: Retrieves detailed information for a title, including its chapters, parts, sections, and statistics.
+*   **Parts & Sections:**
+    *   `GET /api/parts/:id`: Retrieves details for a specific part.
+    *   `GET /api/sections`: Retrieves a list of all sections.
+    *   `GET /api/sections/:id`: Retrieves details for a specific section.
+*   **Analytics:**
+    *   `GET /api/analytics/complexity`: Calculates the average complexity score.
+    *   `GET /api/analytics/amendments`: Calculates the average number of amendments per year.
+    *   `GET /api/analytics/regulations-by-agency`: Retrieves the number of regulations per agency.
+    *   `GET /api/analytics/complexity-over-time`: Retrieves the average complexity score over time.
+    *   `GET /api/analytics/word-count`: Calculates the total word count.
+    *   `GET /api/analytics/unique-word-count`: Calculates the total unique word count.
+*   **Search:**
+    *   `GET /api/search`: Performs a full-text search using PostgreSQL's `to_tsquery` function. Accepts a query parameter `q` and an optional `agencyId`.
+*   **AI Chat:**
+    *   `POST /api/chat`: Handles interactions with the AI assistant.
 
-# 4. Frontend Design (React Native & Next.js)
+## 4. Frontend Design (Next.js)
 
-The frontend will be enhanced to expose the new features to the user.
+The frontend is built with Next.js and uses the `app` directory structure for routing and component organization.
 
-## 4.1. Pages and Components
+### 4.1. Key Pages and Components
 
-* `pages/index.js`: The main dashboard with a powerful Elasticsearch-backed search bar, filters for agencies, topics, etc.
-* `pages/regulations/[id].js`: Regulation detail page will now include:
+*   `app/page.tsx`: The main landing page of the application.
+*   `app/explorer/page.tsx`: The main explorer interface for browsing and selecting regulations, including a search bar that interacts with the `/api/search` endpoint.
+*   `app/regulations/[id]/page.tsx`: The detail page for a specific regulation, which uses the `RegulationDetail.tsx` component.
+*   `app/analytics/page.tsx`: A page for displaying analytics and visualizations.
+*   `components/RegulationDetail.tsx`: A client component that displays the details of a selected regulation.
+*   `components/AiAssistant.tsx`: A component that provides the chat interface for the AI assistant.
 
-  * `components/VisualizationDashboard.js`: Displays charts and graphs (e.g., timelines, complexity scores).
-  * `components/AiAssistant.js`: Chat-like interface for interacting with the AI assistant.
+## 5. Robust Searching with PostgreSQL
 
-# 5. Data Analysis & Visualization (Expanded)
+To provide a powerful and efficient search experience, the application uses PostgreSQL's built-in full-text search capabilities.
 
-## 5.1. Advanced Metrics
+*   **Features:** Full-text search, relevance scoring, and fast querying over large volumes of text data using GIN indexes.
+*   **Implementation:** The backend uses a `tsvector` column in the `section_versions` table, which is automatically updated by a trigger. The `/api/search` endpoint uses the `to_tsquery` function to perform searches.
 
-* **Readability/Complexity Score:** Use libraries like `text-statistics` (e.g., Flesch-Kincaid).
-* **Amendment Frequency:** Analyze the `historical_changes` array.
-* **Named Entity Recognition (NER):** Use libraries like `compromise` to extract entities.
+## 6. AI-Powered Regulation Assistant
 
-## 5.2. Data Visualization
+The AI assistant helps users understand complex regulations by answering questions and providing summaries.
 
-* **Timeline View:** Use `vis-timeline` or a custom component.
-* **Bar Charts:** Use `recharts` to compare complexity or keyword frequencies.
-* **Network Graph:** Use `d3-force` or `vis-network` to visualize regulatory relationships.
+*   **Technology:** The backend integrates with the **Google Gemini Pro** model via the `@google/generative-ai` package.
+*   **Backend Logic:** The `/api/chat` endpoint constructs prompts based on user input and the context of the current regulation, then sends them to the Gemini API.
+*   **Frontend UI:** The `AiAssistant.tsx` component provides a chat interface for users to interact with the AI.
 
-# 6. Robust Searching with Elasticsearch
+## 7. Containerization with Docker
 
-* **Features:** Full-text search, relevance scoring, faceted search, and typo tolerance.
-* **Implementation:** Backend uses official Elasticsearch Node.js client. Frontend hits the `/api/search` endpoint.
+The entire application is containerized using Docker and managed with Docker Compose.
 
-# 7. AI-Powered Regulation Assistant
+*   `docker-compose.yml`: Defines the services for the frontend, backend, and database.
+*   `Dockerfile`: Separate Dockerfiles for the frontend and backend define the build process for each service.
 
-This feature adds intelligence to the application.
-
-* **Technology:** Gemini API for language understanding/generation.
-
-* **Backend Logic:** `/api/ai/*` endpoints handle interactions and prompt construction.
-
-* **Prompt Engineering:**
-
-  * **Summarization Example:**
-
-    ```
-    Summarize the following regulation for a small business owner, focusing on key compliance actions: [Regulation Text]
-    ```
-  * **Explanation Example:**
-
-    ```
-    You are a helpful legal assistant. Answer the user's question based on the provided regulation text.
-    Question: [User Question]
-    Regulation: [Regulation Text]
-    ```
-
-* **Frontend UI:** `AiAssistant.js` provides a simple interface, displays streamed AI responses.
-
-# 8. Containerization with Docker (Updated)
-
-# 9. Getting Started: A Step-by-Step Plan (Updated)
-
-1. **Set up Project & Docker:** Run `docker-compose up --build` to launch services.
-2. **Initialize Projects:** Set up Node.js and Next.js. Install packages: `@elastic/elasticsearch`, visualization libs, etc.
-3. **Build Data Fetching & Indexing Script:** Populate MongoDB and Elasticsearch.
-4. **Develop Backend API:** Build endpoints including `/search` and `/ai`.
-5. **Develop Frontend UI:** Build visualization and AI components.
-6. **Implement Analysis & Search:** Write logic for metrics, integrate Elasticsearch.
-7. **Integrate AI Assistant:** Connect frontend to backend AI endpoints and Gemini API.
+This setup ensures that the development, testing, and production environments are consistent and easy to manage.

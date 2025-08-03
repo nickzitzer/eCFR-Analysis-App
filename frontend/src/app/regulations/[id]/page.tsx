@@ -1,48 +1,71 @@
 "use client";
 
-import React from 'react';
-import RegulationDetail from '../../../components/RegulationDetail';
-import FloatingChatbot from '../../../components/FloatingChatbot';
+import React, { useState, useEffect } from 'react';
+import { useParams, useRouter, useSearchParams } from 'next/navigation';
+import RegulationDetail, { Chapter, Part, Regulation } from '../../../components/RegulationDetail';
+import { SectionData } from '../../../components/Section';
 
-// Mock data for a single regulation detail
-const mockRegulationDetail = {
-  id: 2,
-  title: '29 CFR Part 1910 - Occupational Safety and Health Standards',
-  agency: 'Occupational Safety and Health Administration (OSHA)',
-  text: "This part contains the occupational safety and health standards for all industries...",
-  analysis: {
-      word_count: 85000,
-      complexity_score: 65.2,
-      amendment_frequency: 12,
-      keywords: [{ word: 'Safety', count: 230 }, { word: 'Standard', count: 180 }, { word: 'Employer', count: 155 }],
-  }
+
+const buildSectionHierarchy = (sections: SectionData[]): SectionData[] => {
+    const sectionMap = new Map<number, SectionData>();
+    const rootSections: SectionData[] = [];
+
+    sections.forEach(section => {
+        section.children = [];
+        sectionMap.set(section.id, section);
+    });
+
+    sections.forEach(section => {
+        if (section.parent_id && sectionMap.has(section.parent_id)) {
+            sectionMap.get(section.parent_id)!.children.push(section);
+        } else {
+            rootSections.push(section);
+        }
+    });
+
+    return rootSections;
 };
 
 const RegulationDetailPage = () => {
-  // The 'id' from params would be used to fetch real data in a production application.
-  // For now, we'll use the mock data.
-  const regulation = mockRegulationDetail;
+    const [regulation, setRegulation] = useState<Regulation | null>(null);
+    const [loading, setLoading] = useState(true);
+    const params = useParams();
+    const router = useRouter();
+    const searchParams = useSearchParams();
+    const { id } = params;
+    const expandedSection = searchParams.get('expanded');
 
-  return (
-    <div className="min-h-screen bg-gray-50">
-      <header role="banner" className="bg-primary text-white p-4 shadow-md flex justify-between items-center">
-          <h1 className="text-2xl font-bold">Federal Regulation Analysis Tool</h1>
-          <nav className="flex items-center space-x-2">
-              {/* Navigation buttons for Explorer and Dashboard would go here if this page was part of the main app flow */}
-              <span className="px-4 py-2 rounded-md font-semibold">Regulation Detail</span>
-          </nav>
-          <a href="#main-content" className="sr-only focus:not-sr-only focus:absolute focus:top-4 focus:right-4 bg-accent text-primary font-bold p-2 rounded-md">Skip to Main Content</a>
-      </header>
+    useEffect(() => {
+        if (id) {
+            fetch(`/api/titles/${id}/details`)
+                .then(res => res.json())
+                .then(data => {
+                    data.chapters.forEach((chapter: Chapter) => {
+                        chapter.parts.forEach((part: Part) => {
+                            part.children = buildSectionHierarchy(part.sections);
+                        });
+                    });
+                    setRegulation(data);
+                    setLoading(false);
+                })
+                .catch(error => {
+                    console.error("Failed to fetch regulation details:", error);
+                    setLoading(false);
+                });
+        }
+    }, [id]);
 
-      <RegulationDetail regulation={regulation} onBack={() => window.history.back()} />
+    const handleBack = () => {
+        router.push('/explorer');
+    };
 
-      <FloatingChatbot context={regulation.title} />
+    if (loading) {
+        return <div>Loading...</div>;
+    }
 
-      <footer className="text-center p-4 mt-8 text-gray-500 text-sm border-t">
-          <p>U.S. Federal Government | This is a demonstration application.</p>
-      </footer>
-    </div>
-  );
+    return (
+        <RegulationDetail regulation={regulation} onBack={handleBack} expandedSection={expandedSection} />
+    );
 };
 
 export default RegulationDetailPage;

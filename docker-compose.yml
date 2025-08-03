@@ -1,57 +1,44 @@
 version: '3.8'
 services:
   backend:
-    build: ./backend
+    build:
+      context: ./backend
+      dockerfile: Dockerfile
     container_name: ecfr_backend
     ports:
       - "3001:3001"
+    env_file:
+      - .env
     volumes:
-      - ./backend:/usr/src/app
-      - /usr/src/app/node_modules
-    environment:
-      - MONGO_URI=mongodb://mongo:27017/ecfr_data
-      - ELASTIC_NODE=http://elasticsearch:9200
-      - GEMINI_API_KEY=your_api_key_here # Replace with your actual key
+      - ./docs:/usr/src/app/docs
     depends_on:
-      - mongo
-      - elasticsearch
+      - postgres
     restart: unless-stopped
 
   frontend:
-    build: ./frontend
+    build:
+      context: ./frontend
+      dockerfile: Dockerfile
     container_name: ecfr_frontend
     ports:
       - "3000:3000"
-    volumes:
-      - ./frontend:/app
-      - /app/node_modules
-      - /app/.next
+    env_file:
+      - .env
     depends_on:
       - backend
     restart: unless-stopped
 
-  mongo:
-    image: mongo:latest
-    container_name: ecfr_mongo
+  postgres:
+    image: postgres:13
+    container_name: ecfr_postgres
     ports:
-      - "27017:27017"
+      - "5433:5432"
+    env_file:
+      - .env
     volumes:
-      - mongo-data:/data/db
-    restart: unless-stopped
-
-  elasticsearch:
-    image: docker.elastic.co/elasticsearch/elasticsearch:8.11.3
-    container_name: ecfr_elasticsearch
-    ports:
-      - "9200:9200"
-    environment:
-      - discovery.type=single-node
-      - xpack.security.enabled=false
-      - "ES_JAVA_OPTS=-Xms512m -Xmx512m" # Recommended for development
-    volumes:
-      - es-data:/usr/share/elasticsearch/data
+      - postgres-data:/var/lib/postgresql/data
+      - ./backend/db/init.sql:/docker-entrypoint-initdb.d/init.sql
     restart: unless-stopped
 
 volumes:
-  mongo-data:
-  es-data:
+  postgres-data:

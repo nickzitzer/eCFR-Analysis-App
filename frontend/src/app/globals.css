@@ -38,6 +38,17 @@ body {
     border-radius: 4px;
 }
 .nav-active {
-    background-color: rgba(255, 255, 255, 0.2);
+    background-color: #337ab7;
+    color: white;
     border-bottom: 3px solid #e4a529;
+}
+
+.responsive-text {
+    font-size: 4.5vw;
+}
+
+@media (min-width: 1200px) {
+    .responsive-text {
+        font-size: 3rem; /* 48px */
+    }
 }

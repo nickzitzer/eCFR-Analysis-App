@@ -1,22 +1,17 @@
+"use client";
+
 import React, { useState, useEffect, useRef } from 'react';
 import { SparklesIcon, CloseIcon, ChatIcon } from './Icons';
 
-interface FloatingChatbotProps {
-    context?: string;
-}
-
-const FloatingChatbot: React.FC<FloatingChatbotProps> = ({ context }) => {
+const FloatingChatbot: React.FC = () => {
     const [isOpen, setIsOpen] = useState(false);
     const [messages, setMessages] = useState<{ from: 'user' | 'ai', text: string }[]>([]);
     const [input, setInput] = useState('');
     const chatBoxRef = useRef<HTMLDivElement>(null);
 
     useEffect(() => {
-        const initialMessage = context
-            ? `Hello! I can help you with "${context}". Ask me to summarize or explain something.`
-            : `Hello! I am the eCFR AI assistant. How can I help you today?`;
-        setMessages([{ from: 'ai', text: initialMessage }]);
-    }, [context]);
+        setMessages([{ from: 'ai', text: 'Hello! I am the eCFR AI assistant. How can I help you today?' }]);
+    }, []);
 
     useEffect(() => {
         if (chatBoxRef.current) {
@@ -24,27 +19,47 @@ const FloatingChatbot: React.FC<FloatingChatbotProps> = ({ context }) => {
         }
     }, [messages]);
 
-    const handleSend = (e: React.FormEvent) => {
+    const handleSend = async (e: React.FormEvent) => {
         e.preventDefault();
         if (!input.trim()) return;
-        const newMessages: { from: 'user' | 'ai', text: string }[] = [...messages, { from: 'user', text: input }];
-        setMessages(newMessages);
+
+        const userMessage = { from: 'user' as const, text: input };
+        setMessages(prev => [...prev, userMessage]);
         setInput('');
-        setTimeout(() => {
-            setMessages(prev => [...prev, { from: 'ai', text: `Thinking about "${input}"... (Mock AI response)` }]);
-        }, 1500);
+
+        try {
+            const response = await fetch('/api/chat', {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json',
+                },
+                body: JSON.stringify({ message: input }),
+            });
+
+            if (!response.ok) {
+                throw new Error('Failed to get response from AI');
+            }
+
+            const data = await response.json();
+            const aiMessage = { from: 'ai' as const, text: data.text };
+            setMessages(prev => [...prev, aiMessage]);
+        } catch (error) {
+            console.error('Error fetching AI response:', error);
+            const errorMessage = { from: 'ai' as const, text: 'Sorry, I am having trouble connecting. Please try again later.' };
+            setMessages(prev => [...prev, errorMessage]);
+        }
     };
 
     if (!isOpen) {
         return (
-            <button onClick={() => setIsOpen(true)} className="fixed bottom-6 right-6 bg-primary text-white p-4 rounded-full shadow-lg hover:bg-opacity-90 transition-transform hover:scale-110" aria-label="Open AI Assistant">
+            <button onClick={() => setIsOpen(true)} className="fixed bottom-6 right-6 bg-primary text-white p-4 rounded-full shadow-lg hover:bg-opacity-90 transition-transform hover:scale-110 z-100" aria-label="Open AI Assistant">
                 <ChatIcon />
             </button>
         );
     }
 
     return (
-        <div className="fixed bottom-6 right-6 w-96 h-[32rem] bg-white rounded-lg shadow-2xl flex flex-col border border-gray-300" role="dialog" aria-labelledby="ai-assistant-heading">
+        <div className="fixed bottom-6 right-6 w-96 h-[32rem] bg-white rounded-lg shadow-2xl flex flex-col border border-gray-300 z-100" role="dialog" aria-labelledby="ai-assistant-heading">
             <header className="flex justify-between items-center p-3 bg-primary text-white rounded-t-lg">
                 <h3 id="ai-assistant-heading" className="font-bold flex items-center"><SparklesIcon /> AI Assistant</h3>
                 <button onClick={() => setIsOpen(false)} aria-label="Close AI Assistant"><CloseIcon /></button>
