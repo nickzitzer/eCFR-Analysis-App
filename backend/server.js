@@ -289,30 +289,38 @@ app.get('/api/analytics/unique-word-count', async (req, res) => {
     try {
         const { agencyId } = req.query;
         let query;
-        let params = [];
 
         if (agencyId) {
-            query = `
-                WITH RECURSIVE agency_hierarchy AS (
-                    SELECT id FROM agencies WHERE id = $1
-                    UNION
-                    SELECT a.id FROM agencies a
-                    INNER JOIN agency_hierarchy ah ON a.parent_id = ah.id
+            const agencyIdInt = parseInt(agencyId, 10);
+            if (isNaN(agencyIdInt)) {
+                return res.status(400).json({ error: 'Invalid agencyId' });
+            }
+
+            const subquery = `
+                SELECT sv.search_vector
+                FROM section_versions sv
+                JOIN sections s ON sv.section_id = s.id
+                JOIN parts p ON s.part_id = p.id
+                JOIN chapters c ON p.chapter_id = c.id
+                JOIN agency_cfr_references acr ON c.id = acr.chapter_id
+                WHERE acr.agency_id IN (
+                    WITH RECURSIVE agency_hierarchy AS (
+                        SELECT id FROM agencies WHERE id = ${agencyIdInt}
+                        UNION
+                        SELECT a.id FROM agencies a
+                        INNER JOIN agency_hierarchy ah ON a.parent_id = ah.id
+                    )
+                    SELECT id FROM agency_hierarchy
                 )
+            `;
+
+            query = `
                 SELECT COUNT(DISTINCT lexeme) as total_unique_word_count
                 FROM (
                     SELECT (ts_stat.word) as lexeme
-                    FROM ts_stat('
-                        SELECT search_vector FROM section_versions sv
-                        JOIN sections s ON sv.section_id = s.id
-                        JOIN parts p ON s.part_id = p.id
-                        JOIN chapters c ON p.chapter_id = c.id
-                        JOIN agency_cfr_references acr ON c.id = acr.chapter_id
-                        WHERE acr.agency_id IN (SELECT id FROM agency_hierarchy)
-                    ') as ts_stat
+                    FROM ts_stat($$${subquery}$$) as ts_stat
                 ) as subquery;
             `;
-            params = [agencyId];
         } else {
             query = `
                 SELECT COUNT(DISTINCT lexeme) as total_unique_word_count
@@ -323,7 +331,7 @@ app.get('/api/analytics/unique-word-count', async (req, res) => {
             `;
         }
 
-        const result = await pool.query(query, params);
+        const result = await pool.query(query);
         res.json(result.rows[0]);
     } catch (err) {
         res.status(500).json({ error: err.message });
